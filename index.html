@@ -16,29 +16,82 @@
             --text: #2b2d42;
         }
 
-        body {
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
             font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif;
             background-color: var(--bg);
             color: var(--text);
+            user-select: none;
+        }
+
+        .page-wrapper {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
-            margin: 0;
-            overflow: hidden;
-            user-select: none;
+        }
+
+        .main-wrapper {
+            display: flex;
+            align-items: stretch; /* Make children stretch to same height */
+            gap: 10px;
+            width: 90vw;
+            max-width: 1200px;
+            height: 500px; /* Fixed height for the main wrapper */
         }
 
         .container {
+            flex: 3;
             background: white;
             padding: 2rem;
             border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             text-align: center;
-            max-width: 600px;
-            width: 90%;
             position: relative;
+        }
+
+        .log-wrapper {
+            flex: 1;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #log-container {
+            overflow-y: auto;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column-reverse;
+            padding-right: 5px;
+        }
+        
+        .log-entry {
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 5px;
+            font-size: 1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-shrink: 0; /* Prevent log entries from shrinking */
+        }
+        
+        .log-emoji {
+            margin-right: 0.5em;
+        }
+
+        .log-entry.correct {
+            background-color: #e8f9f7;
+        }
+        
+        .log-entry.wrong {
+            background-color: #fde8e8;
         }
 
         .header {
@@ -106,7 +159,6 @@
             box-shadow: 0 0 0 #2a3d99;
         }
 
-        /* Keyboard focus style */
         .option.focused {
             outline: 5px solid var(--warning);
             outline-offset: 3px;
@@ -192,41 +244,45 @@
     </style>
 </head>
 <body>
-
-    <div class="container">
-        <div class="header">
-            <div class="score">Score: <span id="score-val">0</span></div>
-            <div class="operation-selector">
-                <select id="operation-select">
-                    <option value="addition">Addition</option>
-                    <option value="subtraction">Subtraction</option>
-                    <option value="multiplication" selected>Multiplication</option>
-                    <option value="division">Division</option>
-                </select>
+    <div class="page-wrapper">
+        <div class="main-wrapper">
+            <div class="container">
+                <div class="header">
+                    <div class="score">Score: <span id="score-val">0</span></div>
+                    <div class="operation-selector">
+                        <select id="operation-select">
+                            <option value="addition">Addition</option>
+                            <option value="subtraction">Subtraction</option>
+                            <option value="multiplication" selected>Multiplication</option>
+                            <option value="division">Division</option>
+                        </select>
+                    </div>
+                    <div class="streak">🔥 Streak: <span id="streak-val">0</span></div>
+                </div>
+                <div class="question" id="question">? x ? = ?</div>
+                <div class="options" id="options">
+                    <button class="option" id="opt-0">A</button>
+                    <button class="option" id="opt-1">B</button>
+                    <button class="option" id="opt-2">C</button>
+                    <button class="option" id="opt-3">D</button>
+                </div>
+                <div class="feedback" id="feedback">Feedback</div>
+                <div class="level-up" id="level-up">Level Up! 🌟</div>
             </div>
-            <div class="streak">🔥 Streak: <span id="streak-val">0</span></div>
+            <div class="log-wrapper">
+                <h2>Answered Questions</h2>
+                <div id="log-container"></div>
+            </div>
         </div>
-
-        <div class="question" id="question">? x ? = ?</div>
-
-        <div class="options" id="options">
-            <button class="option" id="opt-0">A</button>
-            <button class="option" id="opt-1">B</button>
-            <button class="option" id="opt-2">C</button>
-            <button class="option" id="opt-3">D</button>
+        <div class="controls-hint">
+            Use 🖱️ Click or ⌨️ Arrow Keys + Enter
         </div>
-
-        <div class="feedback" id="feedback">Feedback</div>
-        <div class="level-up" id="level-up">Level Up! 🌟</div>
-    </div>
-
-    <div class="controls-hint">
-        Use 🖱️ Click or ⌨️ Arrow Keys + Enter
     </div>
 
     <script>
         // Game State
         let currentAnswer = 0;
+        let currentQuestionText = '';
         let score = 0;
         let streak = 0;
         let level = 1;
@@ -247,6 +303,7 @@
         const feedbackEl = document.getElementById('feedback');
         const levelUpEl = document.getElementById('level-up');
         const operationSelect = document.getElementById('operation-select');
+        const logContainer = document.getElementById('log-container');
 
         // Audio Context for simple sounds
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -289,7 +346,17 @@
                 oscillator.stop(audioCtx.currentTime + 0.6);
             }
         }
-
+        
+        // Add to Log
+        function addLogEntry(question, selectedAnswer, isCorrect) {
+            const logEntry = document.createElement('div');
+            logEntry.classList.add('log-entry');
+            logEntry.classList.add(isCorrect ? 'correct' : 'wrong');
+            const emoji = isCorrect ? '✅' : '❌';
+            logEntry.innerHTML = `<span class="log-emoji">${emoji}</span>${question.replace('?', selectedAnswer)}`;
+            logContainer.prepend(logEntry);
+        }
+        
         // Generate Question
         function generateQuestion() {
             isWaitingForNext = false;
@@ -335,6 +402,7 @@
             }
 
             currentAnswer = answer;
+            currentQuestionText = question;
             questionEl.textContent = question;
 
             // Generate wrong options
@@ -371,7 +439,10 @@
             // Initialize audio on first user interaction if needed
             if (!audioCtx) audioCtx = new AudioContext();
 
-            if (selectedAnswer === currentAnswer) {
+            const isCorrect = selectedAnswer === currentAnswer;
+            addLogEntry(currentQuestionText, selectedAnswer, isCorrect);
+
+            if (isCorrect) {
                 // Correct Answer
                 isWaitingForNext = true;
                 element.classList.add('correct');
@@ -386,30 +457,15 @@
                 feedbackEl.textContent = "Awesome! 🎉";
                 feedbackEl.className = 'feedback show success';
 
-                // Confetti!
-                confetti({
-                    particleCount: 100,
-                    spread: 70,
-                    origin: { y: 0.6 },
-                    colors: ['#2ec4b6', '#ff9f1c', '#4361ee']
-                });
-
                 // Check for level up every 5 streaks
                 if (streak > 0 && streak % 5 === 0) {
-                    setTimeout(() => {
-                        playSound('levelup');
-                        levelUpEl.style.animation = 'popOut 2s ease-out forwards';
-                        confetti({
-                            particleCount: 200,
-                            spread: 160,
-                            origin: { y: 0.5 }
-                        });
-                        setTimeout(() => { levelUpEl.style.animation = ''; }, 2000);
-                    }, 500);
+                    playSound('levelup');
+                    levelUpEl.style.animation = 'popOut 2s ease-out forwards';
+                    setTimeout(() => { levelUpEl.style.animation = ''; }, 2000);
                 }
 
-                // Next question after delay
-                setTimeout(generateQuestion, 1500);
+                // Next question immediately
+                generateQuestion();
 
             } else {
                 // Wrong Answer
