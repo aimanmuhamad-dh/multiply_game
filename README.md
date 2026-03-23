@@ -1,2 +1,2 @@
-# multiply game
+# Math Game
 
